@@ -1,126 +1,119 @@
-var express = require('express');
-var router = express.Router();
-var User = require('../models/user');
+const express = require('express');
+const router = express.Router();
+const User = require('../models/user');
 
-router.get('/register', function (req, res, next) {
-	return res.render('register.ejs');
+// Entry point: Render login.ejs at root route
+router.get('/', (req, res) => {
+  return res.render('login.ejs');
 });
 
-
-router.post('/register', function(req, res, next) {
-	console.log(req.body);
-	var personInfo = req.body;
-
-
-	if(!personInfo.email || !personInfo.username || !personInfo.password || !personInfo.passwordConf){
-		res.send();
-	} else {
-		if (personInfo.password == personInfo.passwordConf) {
-
-			User.findOne({email:personInfo.email},function(err,data){
-				if(!data){
-					var c;
-					User.findOne({},function(err,data){
-
-						if (data) {
-							console.log("if");
-							c = data.unique_id + 1;
-						}else{
-							c=1;
-						}
-
-						var newPerson = new User({
-							unique_id:c,
-							email:personInfo.email,
-							username: personInfo.username,
-							password: personInfo.password,
-							passwordConf: personInfo.passwordConf
-						});
-
-						newPerson.save(function(err, Person){
-							if(err)
-								console.log(err);
-							else
-								console.log('Success');
-						});
-
-					}).sort({_id: -1}).limit(1);
-					res.send({"Success":"You are regestered,You can login now."});
-				}else{
-					res.send({"Success":"Email is already used."});
-				}
-
-			});
-		}else{
-			res.send({"Success":"password is not matched"});
-		}
-	}
+// Registration Page
+router.get('/register', (req, res) => {
+  return res.render('register.ejs');
 });
 
-router.get('/login', function (req, res, next) {
-	return res.render('login.ejs');
-});
+// Registration Logic
+router.post('/register', async (req, res) => {
+  try {
+    const personInfo = req.body;
 
-router.post('/login', function (req, res, next) {
-	//console.log(req.body);
-	User.findOne({email:req.body.email},function(err,data){
-		if(data){
-			
-			if(data.password==req.body.password){
-				//console.log("Done Login");
-				req.session.userId = data.unique_id;
-				//console.log(req.session.userId);
-				res.send({"Success":"Success!"});
-				
-			}else{
-				res.send({"Success":"Wrong password!"});
-			}
-		}else{
-			res.send({"Success":"This Email Is not regestered!"});
-		}
-	});
-});
+    if (!personInfo.email || !personInfo.username || !personInfo.password || !personInfo.passwordConf) {
+      return res.send({ Error: "All fields are required." });
+    }
 
-router.get('/logout', function (req, res, next) {
-	console.log("logout")
-	if (req.session) {
-    req.session.destroy(function (err) {
-    	if (err) {
-    		return next(err);
-    	} else {
-    		return res.redirect('/');
-    	}
+    if (personInfo.password !== personInfo.passwordConf) {
+      return res.send({ Error: "Passwords do not match." });
+    }
+
+    const existingUser = await User.findOne({ email: personInfo.email });
+    if (existingUser) {
+      return res.send({ Error: "Email is already registered." });
+    }
+
+    const lastUser = await User.findOne().sort({ unique_id: -1 }).limit(1);
+    const newId = lastUser ? lastUser.unique_id + 1 : 1;
+
+    const newUser = new User({
+      unique_id: newId,
+      email: personInfo.email,
+      username: personInfo.username,
+      password: personInfo.password,
+      passwordConf: personInfo.passwordConf,
     });
-}
+
+    await newUser.save();
+    return res.send({ Success: "You are registered. You can login now." });
+
+  } catch (error) {
+    console.error(error);
+    return res.status(500).send({ Error: "Internal Server Error" });
+  }
 });
 
-router.get('/forgetpass', function (req, res, next) {
-	res.render("forget.ejs");
+// Login Logic
+router.post('/login', async (req, res) => {
+  try {
+    const { email, password } = req.body;
+    const user = await User.findOne({ email });
+
+    if (!user) {
+      return res.send({ Error: "This email is not registered." });
+    }
+
+    if (user.password !== password) {
+      return res.send({ Error: "Incorrect password." });
+    }
+
+    req.session.userId = user.unique_id;
+    return res.send({ Success: "Login successful!" });
+
+  } catch (error) {
+    console.error(error);
+    return res.status(500).send({ Error: "Internal Server Error" });
+  }
 });
 
-router.post('/forgetpass', function (req, res, next) {
-	User.findOne({email:req.body.email},function(err,data){
-		console.log(data);
-		if(!data){
-			res.send({"Success":"This Email Is not regestered!"});
-		}else{
-			if (req.body.password==req.body.passwordConf) {
-			data.password=req.body.password;
-			data.passwordConf=req.body.passwordConf;
+// Logout
+router.get('/logout', (req, res) => {
+  if (req.session) {
+    req.session.destroy((err) => {
+      if (err) {
+        return res.status(500).send({ Error: "Logout failed." });
+      }
+      return res.redirect('/');
+    });
+  }
+});
 
-			data.save(function(err, Person){
-				if(err)
-					console.log(err);
-				else
-					console.log('Success');
-					res.send({"Success":"Password changed!"});
-			});
-		}else{
-			res.send({"Success":"Password does not matched! Both Password should be same."});
-		}
-		}
-	});
-	
+// Password Reset Page
+router.get('/forgetpass', (req, res) => {
+  return res.render('forget.ejs');
+});
+
+// Password Reset Logic
+router.post('/forgetpass', async (req, res) => {
+  try {
+    const { email, password, passwordConf } = req.body;
+    const user = await User.findOne({ email });
+
+    if (!user) {
+      return res.send({ Error: "This email is not registered." });
+    }
+
+    if (password !== passwordConf) {
+      return res.send({ Error: "Passwords do not match." });
+    }
+
+    user.password = password;
+    user.passwordConf = passwordConf;
+
+    await user.save();
+    return res.send({ Success: "Password changed!" });
+
+  } catch (error) {
+    console.error(error);
+    return res.status(500).send({ Error: "Internal Server Error" });
+  }
 });
 
 module.exports = router;
