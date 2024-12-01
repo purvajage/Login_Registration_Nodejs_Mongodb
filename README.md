@@ -29,5 +29,5 @@ Before running this project, ensure you have the following installed on your mac
 
 1. **Clone the repository**:
    ```bash
-   git clone https://github.com/your-username/your-repository.git
+   git clone https://github.com/purvajage/Login_Registration_Nodejs_Mongodb.git
    cd your-repository
